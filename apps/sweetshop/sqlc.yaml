@@ -1,0 +1,39 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "internal/infrastructure/persistence/queries/"
+    schema: "internal/migrations/versions/"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/infrastructure/persistence/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+        emit_interface: true
+        rename:
+          app_sweetshop_organization: "Organization"
+          app_sweetshop_product: "Product"
+          app_sweetshop_order: "Order"
+          app_sweetshop_order_item: "OrderItem"
+        overrides:
+          - db_type: "uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+              pointer: true
+          - db_type: "timestamptz"
+            go_type:
+              import: "time"
+              type: "Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true

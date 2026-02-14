@@ -1,0 +1,52 @@
+services:
+  vector:
+    image: timberio/vector:0.53.0-debian
+    ports:
+      - "4318:4318"
+      - "8686:8686"
+    volumes:
+      - ./observability/vector.yaml:/etc/vector/vector.yaml:ro
+    command: ["--config", "/etc/vector/vector.yaml"]
+    depends_on:
+      - victoria-logs
+      - victoria-metrics
+      - tempo
+
+  victoria-logs:
+    image: victoriametrics/victoria-logs:v1.45.0
+    ports:
+      - "9428:9428"
+    command:
+      - "-storageDataPath=/victoria-logs-data"
+
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.135.0
+    ports:
+      - "8428:8428"
+    command:
+      - "-storageDataPath=/victoria-metrics-data"
+      - "-retentionPeriod=1d"
+
+  tempo:
+    image: grafana/tempo:2.10.0
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_INSTALL_PLUGINS: "https://github.com/VictoriaMetrics/victorialogs-datasource/releases/download/v0.14.2/victoriametrics-logs-datasource-v0.14.2.zip;victoriametrics-logs-datasource"
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: victoriametrics-logs-datasource
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - victoria-logs
+      - victoria-metrics
+      - tempo

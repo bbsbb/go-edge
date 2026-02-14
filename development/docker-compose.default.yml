@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: app_sweetshop
+    volumes:
+      - ./default/init-test-db.sh:/docker-entrypoint-initdb.d/init-test-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d app_sweetshop"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: package/Dockerfile
+      args:
+        APP: sweetshop
+    environment:
+      APP_ENVIRONMENT: development
+      APP_SWEETSHOP_PSQL_HOST: postgres
+      APP_SWEETSHOP_MIGRATE_PSQL_HOST: postgres
+    command: ["migrate", "up"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  sweetshop:
+    build:
+      context: ..
+      dockerfile: package/Dockerfile
+      args:
+        APP: sweetshop
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENVIRONMENT: development
+      APP_SWEETSHOP_PSQL_HOST: postgres
+      APP_SWEETSHOP_OTEL_ENDPOINT: http://host.docker.internal:4318
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully

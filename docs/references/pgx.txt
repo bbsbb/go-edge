@@ -1,0 +1,111 @@
+# pgx v5 Reference
+# Source: github.com/jackc/pgx/v5
+
+## Connection
+
+# Direct:
+conn, err := pgx.Connect(ctx, "postgres://user:pass@host:5432/db")
+defer conn.Close(ctx)
+
+# Pool (recommended for applications):
+pool, err := pgxpool.New(ctx, connString)
+defer pool.Close()
+
+# Pool config:
+config, err := pgxpool.ParseConfig(connString)
+config.MaxConns = 10
+config.MinConns = 2
+config.MaxConnLifetime = time.Hour
+config.MaxConnIdleTime = 30 * time.Minute
+pool, err := pgxpool.NewWithConfig(ctx, config)
+
+## Querying
+
+# Single row:
+var name string
+var weight int
+err := conn.QueryRow(ctx, "SELECT name, weight FROM widgets WHERE id=$1", 42).Scan(&name, &weight)
+
+# Multiple rows (manual):
+rows, err := conn.Query(ctx, "SELECT name FROM widgets WHERE weight > $1", 10)
+defer rows.Close()
+for rows.Next() {
+    var name string
+    rows.Scan(&name)
+}
+
+# Multiple rows (collect):
+rows, _ := conn.Query(ctx, "SELECT name, weight FROM widgets")
+widgets, err := pgx.CollectRows(rows, pgx.RowToStructByName[Widget])
+
+# Single row (collect):
+row, _ := conn.Query(ctx, "SELECT name, weight FROM widgets WHERE id=$1", 42)
+widget, err := pgx.CollectOneRow(row, pgx.RowToStructByName[Widget])
+
+# Exec (INSERT/UPDATE/DELETE):
+tag, err := conn.Exec(ctx, "DELETE FROM widgets WHERE id=$1", 42)
+tag.RowsAffected()  // int64
+
+## Row Scanning
+
+pgx.RowTo[T]              # scan to single value
+pgx.RowToStructByName[T]  # scan to struct by column name
+pgx.RowToStructByPos[T]   # scan to struct by position
+pgx.RowToMap              # scan to map[string]any
+
+## Transactions
+
+tx, err := conn.Begin(ctx)
+// or with options:
+tx, err := conn.BeginTx(ctx, pgx.TxOptions{
+    IsoLevel:   pgx.Serializable,
+    AccessMode: pgx.ReadOnly,
+})
+
+// Use tx like conn: tx.QueryRow(), tx.Query(), tx.Exec()
+
+err = tx.Commit(ctx)
+err = tx.Rollback(ctx)
+
+# SET LOCAL (for RLS):
+tx.Exec(ctx, "SET LOCAL app.current_organization = $1", orgID)
+
+## Batch Operations
+
+batch := &pgx.Batch{}
+batch.Queue("INSERT INTO widgets(name) VALUES($1)", "foo")
+batch.Queue("INSERT INTO widgets(name) VALUES($1)", "bar")
+br := conn.SendBatch(ctx, batch)
+defer br.Close()
+_, err := br.Exec()  // for each queued query
+
+## PostgreSQL Types
+
+# Native support for ~70 types:
+# UUID, TIMESTAMPTZ, JSONB, arrays, inet/cidr, numeric,
+# point, box, path, polygon, circle, hstore, etc.
+
+# Custom type registration:
+conn.TypeMap().RegisterType(...)
+
+## COPY Protocol
+
+# Bulk insert:
+copyCount, err := conn.CopyFrom(
+    ctx,
+    pgx.Identifier{"widgets"},           // table
+    []string{"name", "weight"},           // columns
+    pgx.CopyFromRows(rows),              // source
+)
+
+## LISTEN/NOTIFY
+
+_, err := conn.Exec(ctx, "LISTEN mychannel")
+notification, err := conn.WaitForNotification(ctx)
+// notification.Channel, notification.Payload
+
+## OTel Integration
+
+# github.com/exsql-io/otelpgx
+config, _ := pgxpool.ParseConfig(connString)
+config.ConnConfig.Tracer = otelpgx.NewTracer()

@@ -1,0 +1,12 @@
+logging:
+  level: info
+  format: json
+
+psql:
+  host: "secret://psql-host"
+  port: 5432
+  database: app_sweetshop
+  credentials:
+    username: "secret://psql-migrate-username"
+    password: "secret://psql-migrate-password"
+  disable_ssl: false

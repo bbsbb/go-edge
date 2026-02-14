@@ -1,0 +1,396 @@
+================================================================================
+GOOSE v3 — Quick API Reference (Library Mode)
+================================================================================
+Source: github.com/pressly/goose/v3
+Docs:   https://pressly.github.io/goose/
+PkgDev: https://pkg.go.dev/github.com/pressly/goose/v3
+
+================================================================================
+1. PROVIDER-BASED API (RECOMMENDED)
+================================================================================
+
+Construction
+---
+  provider, err := goose.NewProvider(
+      goose.DialectPostgres,   // dialect constant
+      db,                      // *sql.DB
+      fsys,                    // fs.FS (embed.FS, os.DirFS, etc.)
+      goose.WithTableName("custom_migrations"),
+      goose.WithSlog(logger),
+      goose.WithAllowOutofOrder(true),
+  )
+  defer provider.Close()
+
+Provider is thread-safe for concurrent use after construction.
+
+Provider Methods
+---
+  Up(ctx)                        ([]*MigrationResult, error)  — apply all pending
+  UpByOne(ctx)                   (*MigrationResult, error)    — apply next one
+  UpTo(ctx, version int64)       ([]*MigrationResult, error)  — apply up to version
+  Down(ctx)                      (*MigrationResult, error)    — rollback last one
+  DownTo(ctx, version int64)     ([]*MigrationResult, error)  — rollback to version
+  Status(ctx)                    ([]*MigrationStatus, error)  — list all with state
+  GetDBVersion(ctx)              (int64, error)               — current DB version
+  Ping(ctx)                      error                        — test connection
+  Close()                        error                        — close DB connection
+  ListSources()                  []*Source                    — all known migrations
+
+Provider Options
+---
+  goose.WithSlog(logger *slog.Logger)         structured logging via log/slog
+  goose.WithLogger(l Logger)                  custom Logger interface
+  goose.WithTableName(name string)            default: "goose_db_version"
+  goose.WithAllowOutofOrder(bool)             allow out-of-order migrations
+  goose.WithGoMigrations(m ...*Migration)     register Go migrations directly
+  goose.WithDisableVersioning(bool)           skip version tracking entirely
+  goose.WithDisableGlobalRegistry(bool)       ignore global AddMigration* calls
+  goose.WithExcludeNames([]string)            exclude migrations by filename
+  goose.WithExcludeVersions([]int64)          exclude migrations by version
+  goose.WithStore(store database.Store)       custom store (requires DialectCustom)
+  goose.WithSessionLocker(lock.SessionLocker) advisory locking
+  goose.WithVerbose(bool)                     verbose output
+  goose.WithIsolateDDL(bool)                  separate DDL from DML (Aurora DSQL)
+
+Result Types
+---
+  MigrationResult {
+      Source    *Source
+      Duration  time.Duration
+      Direction string         // "up" or "down"
+      Empty     bool
+      Error     error
+  }
+
+  MigrationStatus {
+      Source    *Source
+      State     State          // StatePending or StateApplied
+      AppliedAt time.Time
+  }
+
+  PartialError {
+      Applied []*MigrationResult   // succeeded before failure
+      Failed  *MigrationResult     // the one that failed
+      Err     error
+  }
+
+
+================================================================================
+2. LEGACY GLOBAL API (DEPRECATED — use Provider instead)
+================================================================================
+
+  goose.SetDialect("postgres")
+  goose.SetTableName("goose_db_version")
+  goose.SetBaseFS(embedMigrations)
+  goose.SetLogger(customLogger)
+  goose.SetVerbose(true)
+
+  goose.Up(db, "migrations")
+  goose.UpTo(db, "migrations", version)
+  goose.Down(db, "migrations")
+  goose.DownTo(db, "migrations", version)
+  goose.Status(db, "migrations")
+  goose.Reset(db, "migrations")
+
+  // Context variants
+  goose.UpContext(ctx, db, "migrations")
+  goose.DownContext(ctx, db, "migrations")
+
+
+================================================================================
+3. DIALECTS
+================================================================================
+
+  goose.DialectPostgres      "postgres"
+  goose.DialectMySQL         "mysql"
+  goose.DialectSQLite3       "sqlite3"
+  goose.DialectMSSQL         "mssql"
+  goose.DialectRedshift      "redshift"
+  goose.DialectTiDB          "tidb"
+  goose.DialectClickHouse    "clickhouse"
+  goose.DialectYdB           "ydb"
+  goose.DialectStarrocks     "starrocks"
+  goose.DialectCustom        "custom"       for custom stores
+  goose.DialectAuroraDSQL    "auroradql"
+
+
+================================================================================
+4. EMBEDDED FILESYSTEM SUPPORT
+================================================================================
+
+Using embed.FS (recommended for production)
+---
+  import "embed"
+
+  //go:embed migrations/*.sql
+  var embedMigrations embed.FS
+
+  // Provider API
+  provider, err := goose.NewProvider(
+      goose.DialectPostgres,
+      db,
+      embedMigrations,
+  )
+
+  // Legacy API
+  goose.SetBaseFS(embedMigrations)
+  goose.Up(db, "migrations")
+
+Using os.DirFS
+---
+  provider, err := goose.NewProvider(
+      goose.DialectPostgres,
+      db,
+      os.DirFS("/path/to/migrations"),
+  )
+
+Any implementation of fs.FS is accepted.
+
+
+================================================================================
+5. SQL MIGRATION FILE FORMAT
+================================================================================
+
+File Naming
+---
+  {version}_{description}.sql
+
+  Timestamp-based:  20240115120000_create_users.sql
+  Sequential:       00001_create_users.sql
+
+Annotations
+---
+  -- +goose Up                 REQUIRED. Marks start of forward migration.
+  -- +goose Down               Optional. Marks start of rollback migration.
+  -- +goose StatementBegin     Start of multi-statement block.
+  -- +goose StatementEnd       End of multi-statement block.
+  -- +goose NO TRANSACTION     Run outside a transaction (DDL that can't be
+                               wrapped, e.g., CREATE INDEX CONCURRENTLY).
+  -- +goose ENVSUB ON          Enable environment variable substitution.
+  -- +goose ENVSUB OFF         Disable environment variable substitution.
+
+Each file must have exactly one -- +goose Up annotation.
+
+Example: Simple Migration
+---
+  -- +goose Up
+  CREATE TABLE users (
+      id    BIGINT PRIMARY KEY,
+      name  TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE
+  );
+
+  -- +goose Down
+  DROP TABLE users;
+
+Example: Multi-Statement (functions, triggers, etc.)
+---
+  -- +goose Up
+  -- +goose StatementBegin
+  CREATE OR REPLACE FUNCTION update_timestamp()
+  RETURNS TRIGGER AS $$
+  BEGIN
+      NEW.updated_at = NOW();
+      RETURN NEW;
+  END;
+  $$ LANGUAGE plpgsql;
+  -- +goose StatementEnd
+
+  -- +goose Down
+  DROP FUNCTION IF EXISTS update_timestamp();
+
+Example: No Transaction
+---
+  -- +goose Up
+  -- +goose NO TRANSACTION
+  CREATE INDEX CONCURRENTLY idx_users_email ON users (email);
+
+  -- +goose Down
+  -- +goose NO TRANSACTION
+  DROP INDEX CONCURRENTLY IF EXISTS idx_users_email;
+
+Environment Variable Substitution
+---
+  -- +goose ENVSUB ON
+  CREATE ROLE ${DB_ROLE:-app_user};
+  GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${DB_ROLE:-app_user};
+  -- +goose ENVSUB OFF
+
+  Supported forms:
+    ${VAR}            direct substitution
+    ${VAR:-default}   default if unset or null
+    ${VAR-default}    default if unset only
+    ${VAR?error_msg}  error if unset
+
+
+================================================================================
+6. GO MIGRATION REGISTRATION
+================================================================================
+
+Global Registration (init pattern)
+---
+  package migrations
+
+  import (
+      "context"
+      "database/sql"
+      "github.com/pressly/goose/v3"
+  )
+
+  func init() {
+      goose.AddMigrationContext(upCreateUsers, downCreateUsers)
+  }
+
+  func upCreateUsers(ctx context.Context, tx *sql.Tx) error {
+      _, err := tx.ExecContext(ctx, `CREATE TABLE users (...)`)
+      return err
+  }
+
+  func downCreateUsers(ctx context.Context, tx *sql.Tx) error {
+      _, err := tx.ExecContext(ctx, `DROP TABLE users`)
+      return err
+  }
+
+File must be named with version prefix: 00001_create_users.go
+Version is extracted from the filename.
+
+Registration Functions
+---
+  // Within a transaction (*sql.Tx)
+  goose.AddMigrationContext(up, down GoMigrationContext)
+  goose.AddNamedMigrationContext(filename, up, down GoMigrationContext)
+
+  // Without transaction (*sql.DB)
+  goose.AddMigrationNoTxContext(up, down GoMigrationNoTxContext)
+  goose.AddNamedMigrationNoTxContext(filename, up, down GoMigrationNoTxContext)
+
+Function Signatures
+---
+  type GoMigrationContext       func(ctx context.Context, tx *sql.Tx) error
+  type GoMigrationNoTxContext   func(ctx context.Context, db *sql.DB) error
+
+Programmatic Registration (Provider API, no globals)
+---
+  migrations := []*goose.Migration{
+      goose.NewGoMigration(
+          1,                                            // version
+          &goose.GoFunc{RunTx: upCreateUsers},          // up
+          &goose.GoFunc{RunTx: downCreateUsers},        // down
+      ),
+  }
+
+  provider, err := goose.NewProvider(
+      goose.DialectPostgres,
+      db,
+      nil,  // no fs.FS needed for pure Go migrations
+      goose.WithGoMigrations(migrations...),
+      goose.WithDisableGlobalRegistry(true),
+  )
+
+GoFunc Struct
+---
+  type GoFunc struct {
+      RunTx func(ctx context.Context, tx *sql.Tx) error   // transactional
+      RunDB func(ctx context.Context, db *sql.DB) error    // non-transactional
+      Mode  TransactionMode                                 // override mode
+  }
+
+  Only one of RunTx or RunDB should be set.
+
+
+================================================================================
+7. CUSTOM LOGGING
+================================================================================
+
+Using log/slog (recommended)
+---
+  provider, err := goose.NewProvider(
+      goose.DialectPostgres,
+      db,
+      fsys,
+      goose.WithSlog(slog.Default()),
+  )
+
+Using Logger Interface
+---
+  type Logger interface {
+      Fatalf(format string, v ...interface{})
+      Printf(format string, v ...interface{})
+  }
+
+  // Provider API
+  goose.WithLogger(myLogger)
+
+  // Legacy API
+  goose.SetLogger(myLogger)
+
+Disabling Logging
+---
+  goose.WithLogger(goose.NopLogger())
+
+
+================================================================================
+8. ERROR HANDLING
+================================================================================
+
+Sentinel Errors
+---
+  goose.ErrVersionNotFound    version not in database
+  goose.ErrNoMigrations       no migration files found
+  goose.ErrAlreadyApplied     migration already applied
+  goose.ErrNotApplied         migration not applied
+
+Partial Errors
+---
+  results, err := provider.Up(ctx)
+  if err != nil {
+      var partial *goose.PartialError
+      if errors.As(err, &partial) {
+          // partial.Applied — migrations that succeeded
+          // partial.Failed  — the migration that failed
+          // partial.Err     — underlying error
+      }
+  }
+
+
+================================================================================
+9. TYPICAL SETUP PATTERN
+================================================================================
+
+  import (
+      "context"
+      "database/sql"
+      "embed"
+      "log/slog"
+
+      "github.com/pressly/goose/v3"
+      _ "github.com/lib/pq"
+  )
+
+  //go:embed migrations/*.sql
+  var migrations embed.FS
+
+  func RunMigrations(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
+      provider, err := goose.NewProvider(
+          goose.DialectPostgres,
+          db,
+          migrations,
+          goose.WithSlog(logger),
+      )
+      if err != nil {
+          return fmt.Errorf("creating migration provider: %w", err)
+      }
+      defer provider.Close()
+
+      results, err := provider.Up(ctx)
+      if err != nil {
+          return fmt.Errorf("running migrations: %w", err)
+      }
+      for _, r := range results {
+          logger.Info("migration applied",
+              "version", r.Source.Version,
+              "duration", r.Duration,
+          )
+      }
+      return nil
+  }

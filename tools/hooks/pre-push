@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> pre-push: running full CI pipeline..."
+make ci
+
+echo "==> pre-push: running guard validations..."
+make guard
+
+echo "==> pre-push: all checks passed."

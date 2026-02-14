@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "==> pre-commit: checking formatting..."
+UNFORMATTED=$(gofumpt -l . 2>/dev/null || true)
+if [ -n "$UNFORMATTED" ]; then
+    echo "Files need formatting (run gofumpt -w .):"
+    echo "$UNFORMATTED"
+    exit 1
+fi
+
+MODULES=(core)
+for app in apps/*/; do
+    [ -d "$app" ] && MODULES+=("${app%/}")
+done
+
+echo "==> pre-commit: running go vet..."
+for mod in "${MODULES[@]}"; do
+    (cd "$mod" && go vet -tags=testing ./...)
+done
+
+echo "==> pre-commit: running golangci-lint (new issues only)..."
+for mod in "${MODULES[@]}"; do
+    (cd "$mod" && golangci-lint run --new)
+done
+
+echo "==> pre-commit: all checks passed."

@@ -1,0 +1,194 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+  build-tags:
+    - testing
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - unconvert
+    - bodyclose
+    - noctx
+    - sqlclosecheck
+    - depguard
+    - forbidigo
+    - errorlint
+    - revive
+    - gosec
+  settings:
+    misspell:
+      locale: US
+    depguard:
+      rules:
+        # Global: deprecated packages that must never be imported
+        deprecated-packages:
+          list-mode: lax
+          deny:
+            - pkg: "github.com/mitchellh/mapstructure"
+              desc: "use github.com/go-viper/mapstructure/v2 instead of the archived mitchellh/mapstructure"
+
+        # domain/ must not import: gorm, database/sql, net/http, chi,
+        # infrastructure/, transport/, service/, config/
+        domain-layer:
+          files:
+            - "**/internal/domain/**"
+          list-mode: lax
+          deny:
+            - pkg: "gorm.io"
+              desc: "domain must not depend on gorm"
+            - pkg: "database/sql"
+              desc: "domain must not depend on database/sql"
+            - pkg: "net/http"
+              desc: "domain must not depend on net/http"
+            - pkg: "github.com/go-chi/chi"
+              desc: "domain must not depend on chi"
+            - pkg: "github.com/bbsbb/go-edge/<app>/internal/infrastructure"
+              desc: "domain must not depend on infrastructure layer"
+            - pkg: "github.com/bbsbb/go-edge/<app>/internal/transport"
+              desc: "domain must not depend on transport layer"
+            - pkg: "github.com/bbsbb/go-edge/<app>/internal/service"
+              desc: "domain must not depend on service layer"
+            - pkg: "github.com/bbsbb/go-edge/<app>/internal/config"
+              desc: "domain must not depend on config"
+
+        # service/ must not import: gorm, database/sql, net/http, chi,
+        # infrastructure/, transport/
+        service-layer:
+          files:
+            - "**/internal/service/**"
+          list-mode: lax
+          deny:
+            - pkg: "gorm.io"
+              desc: "service must not depend on gorm"
+            - pkg: "database/sql"
+              desc: "service must not depend on database/sql"
+            - pkg: "net/http"
+              desc: "service must not depend on net/http"
+            - pkg: "github.com/go-chi/chi"
+              desc: "service must not depend on chi"
+            - pkg: "github.com/bbsbb/go-edge/<app>/internal/infrastructure"
+              desc: "service must not depend on infrastructure layer"
+            - pkg: "github.com/bbsbb/go-edge/<app>/internal/transport"
+              desc: "service must not depend on transport layer"
+
+        # infrastructure/ must not import: net/http, chi, transport/, service/
+        infrastructure-layer:
+          files:
+            - "**/internal/infrastructure/**"
+          list-mode: lax
+          deny:
+            - pkg: "net/http"
+              desc: "infrastructure must not depend on net/http"
+            - pkg: "github.com/go-chi/chi"
+              desc: "infrastructure must not depend on chi"
+            - pkg: "github.com/bbsbb/go-edge/<app>/internal/transport"
+              desc: "infrastructure must not depend on transport layer"
+            - pkg: "github.com/bbsbb/go-edge/<app>/internal/service"
+              desc: "infrastructure must not depend on service layer"
+
+        # Application code must use rlsfx, not psqlfx or pgxpool directly.
+        # Exceptions: config/ (needs psqlfx.Configuration), cmd/ (composition root),
+        # migrations/ (needs psqlfx helpers), organization.go and module.go
+        # (establish tenant context), and tests.
+        rls-enforcement:
+          files:
+            - "**/internal/**"
+            - "!**/internal/config/**"
+            - "!**/internal/migrations/**"
+            - "!**/persistence/organization.go"
+            - "!**/persistence/module.go"
+            - "!**_test.go"
+          list-mode: lax
+          deny:
+            - pkg: "github.com/bbsbb/go-edge/core/fx/psqlfx"
+              desc: "application code must use rlsfx, not psqlfx directly — only config/, migrations/, and organization repos may import psqlfx"
+            - pkg: "github.com/jackc/pgx/v5/pgxpool"
+              desc: "application code must use *rlsfx.DB, not *pgxpool.Pool directly — only config/, migrations/, and organization repos may import pgxpool"
+
+        # transport/ must not import: gorm, database/sql, infrastructure/
+        transport-layer:
+          files:
+            - "**/internal/transport/**"
+          list-mode: lax
+          deny:
+            - pkg: "gorm.io"
+              desc: "transport must not depend on gorm"
+            - pkg: "database/sql"
+              desc: "transport must not depend on database/sql"
+            - pkg: "github.com/bbsbb/go-edge/<app>/internal/infrastructure"
+              desc: "transport must not depend on infrastructure layer"
+    forbidigo:
+      forbid:
+        - pattern: '^fmt\.Print.*$'
+          msg: "use slog for structured logging instead of fmt.Print"
+        - pattern: '^print(ln)?$'
+          msg: "use slog for structured logging instead of print"
+        - pattern: '^log\.(Print.*|Fatal.*)$'
+          msg: "use slog for structured logging instead of log package"
+        - pattern: '^slog\.New\b'
+          msg: "use core/testing.NewNoopLogger or NewLogCapture instead of slog.New in tests"
+        - pattern: '^slog\.(Info|Warn|Error|Debug|Log)(Context)?\b'
+          msg: "use an injected *slog.Logger instead of package-level slog functions"
+        - pattern: '^uuid\.New\(\)'
+          msg: "use uuid.Must(uuid.NewV7()) for time-sortable UUIDs instead of uuid.New()"
+      exclude-godoc-examples: true
+    errorlint:
+      errorf: true
+      errorf-multi: true
+      asserts: true
+      comparison: true
+    revive:
+      rules:
+        - name: file-length-limit
+          arguments:
+            - max: 500
+              skip-comments: true
+              skip-blank-lines: true
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+      - path: _test\.go
+        text: "use slog for structured logging"
+        linters:
+          - forbidigo
+      - path: _test\.go
+        text: "use an injected"
+        linters:
+          - forbidigo
+      - path-except: _test\.go
+        text: "use core/testing"
+        linters:
+          - forbidigo
+      - path: main\.go
+        linters:
+          - forbidigo
+      - path: migrations/
+        linters:
+          - forbidigo
+      - path: configuration\.go
+        linters:
+          - forbidigo
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/bbsbb/go-edge

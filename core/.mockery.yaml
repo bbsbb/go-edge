@@ -1,0 +1,13 @@
+with-expecter: true
+dir: "tests/mocks/"
+outpkg: "mocks"
+include-auto-generated: false
+all: false
+recursive: true
+packages:
+  github.com/bbsbb/go-edge/core/secretstore:
+    interfaces:
+      Service:
+        config:
+          filename: mock_SecretsService.go
+          mockname: MockSecretsService

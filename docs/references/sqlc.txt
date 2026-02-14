@@ -1,0 +1,136 @@
+# SQLC Reference
+# Source: docs.sqlc.dev
+
+## Query Annotations
+
+# Format: -- name: <FunctionName> <command>
+
+-- name: GetAuthor :one          # returns single struct, error
+SELECT * FROM authors WHERE id = $1 LIMIT 1;
+
+-- name: ListAuthors :many       # returns []struct, error
+SELECT * FROM authors ORDER BY name;
+
+-- name: CreateAuthor :exec       # returns error
+INSERT INTO authors (name, bio) VALUES ($1, $2);
+
+-- name: DeleteAuthor :exec
+DELETE FROM authors WHERE id = $1;
+
+-- name: UpdateAuthor :execrows   # returns int64 (rows affected), error
+UPDATE authors SET bio = $2 WHERE id = $1;
+
+-- name: InsertAuthor :execresult # returns sql.Result, error
+INSERT INTO authors (name) VALUES ($1);
+
+# pgx-only batch operations:
+-- name: InsertBatch :batchexec   # batch exec
+-- name: ListBatch :batchmany     # batch query (multiple rows)
+-- name: GetBatch :batchone       # batch query (single row)
+
+# pgx-only bulk insert:
+-- name: BulkInsert :copyfrom     # uses COPY protocol
+INSERT INTO authors (name, bio) VALUES ($1, $2);
+
+## Configuration (sqlc.yaml v2)
+
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations/"
+    queries: "queries/"
+    gen:
+      go:
+        package: "db"
+        out: "internal/db"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        query_parameter_limit: 1
+
+## Key Go Generation Settings
+
+# Package & output:
+package: "db"                    # generated package name
+out: "internal/db"               # output directory
+sql_package: "pgx/v5"           # driver: pgx/v4, pgx/v5, database/sql
+
+# Struct tags:
+emit_json_tags: true             # add json struct tags
+emit_db_tags: false              # add db struct tags
+json_tags_case_style: "camel"    # camel, pascal, snake, none
+
+# Type emission:
+emit_interface: true             # generate Querier interface
+emit_empty_slices: true          # [] instead of nil for empty results
+emit_pointers_for_null_types: false  # *string vs sql.NullString
+emit_exact_table_names: false    # use exact table name for struct
+omit_unused_structs: false       # omit structs not referenced by queries
+
+# Query params:
+query_parameter_limit: 1         # args before using params struct (0=always struct)
+emit_params_struct_pointers: false
+emit_result_struct_pointers: false
+
+# Naming:
+initialisms: ["id"]              # uppercase initialisms (e.g., AppID)
+
+# Files:
+output_db_file_name: "db.go"
+output_models_file_name: "models.go"
+output_querier_file_name: "querier.go"
+
+## Type Overrides
+
+sql:
+  - engine: "postgresql"
+    gen:
+      go:
+        overrides:
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "timestamptz"
+            go_type:
+              import: "time"
+              type: "Time"
+          - db_type: "text"
+            nullable: true
+            go_type:
+              import: "database/sql"
+              type: "NullString"
+
+## Column Renaming
+
+gen:
+  go:
+    rename:
+      id: "ID"
+      url: "URL"
+      api_key: "APIKey"
+
+## Generated Files
+
+# db.go      - DBTX interface, Queries struct, New() constructor
+# models.go  - struct types from schema
+# *.sql.go   - query functions (one file per .sql query file)
+# querier.go - Querier interface (if emit_interface: true)
+
+## Query Syntax Tips
+
+# Named parameters with sqlc.arg():
+-- name: UpdateBio :exec
+UPDATE authors SET bio = sqlc.arg(biography) WHERE id = sqlc.arg(author_id);
+
+# Nullable override with sqlc.narg():
+-- name: Search :many
+SELECT * FROM authors WHERE name = sqlc.narg(name) OR bio = sqlc.narg(bio);
+
+# Type casting with sqlc.embed():
+-- name: GetWithBooks :many
+SELECT sqlc.embed(authors), sqlc.embed(books)
+FROM authors JOIN books ON authors.id = books.author_id;
+
+# Slice parameters (IN queries):
+-- name: GetByIDs :many
+SELECT * FROM authors WHERE id = ANY(sqlc.slice(ids));

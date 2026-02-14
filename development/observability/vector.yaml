@@ -1,0 +1,36 @@
+sources:
+  otlp:
+    type: opentelemetry
+    use_otlp_decoding: true
+    grpc:
+      address: "0.0.0.0:4317"
+    http:
+      address: "0.0.0.0:4318"
+
+sinks:
+  victoria_logs:
+    type: opentelemetry
+    inputs: ["otlp.logs"]
+    protocol:
+      type: http
+      uri: "http://victoria-logs:9428/insert/opentelemetry/v1/logs"
+      encoding:
+        codec: otlp
+
+  victoria_metrics:
+    type: opentelemetry
+    inputs: ["otlp.metrics"]
+    protocol:
+      type: http
+      uri: "http://victoria-metrics:8428/opentelemetry/v1/metrics"
+      encoding:
+        codec: otlp
+
+  tempo:
+    type: opentelemetry
+    inputs: ["otlp.traces"]
+    protocol:
+      type: http
+      uri: "http://tempo:4318/v1/traces"
+      encoding:
+        codec: otlp

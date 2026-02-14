@@ -1,0 +1,41 @@
+logging:
+  level: info
+  format: json
+
+http_server:
+  port: 8080
+  request_timeout: 30
+
+psql:
+  host: "secret://psql-host"
+  port: 5432
+  database: app_sweetshop
+  credentials:
+    username: "secret://psql-username"
+    password: "secret://psql-password"
+  disable_ssl: false
+
+otel:
+  enabled: true
+  endpoint: "secret://otel-endpoint"
+  service_name: sweetshop
+  sample_rate: 0.1
+  insecure: false
+
+rls:
+  schema: app_sweetshop
+  field: current_organization
+
+middleware:
+  recovery:
+    enabled: true
+  max_bytes:
+    enabled: true
+  request_id:
+    enabled: true
+  correlation_id:
+    enabled: true
+  otel_http:
+    enabled: true
+  request_log:
+    enabled: true

@@ -1,0 +1,12 @@
+logging:
+  level: error
+  format: json
+
+psql:
+  host: localhost
+  port: 5432
+  database: test_app_sweetshop
+  credentials:
+    username: root
+    password: root
+  disable_ssl: true

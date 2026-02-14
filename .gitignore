@@ -1,0 +1,10 @@
+# Specs folder (ephemeral planning docs)
+/specs/
+
+# Coverage output
+coverage.out
+*.coverprofile
+
+# Build output — app binaries produced by `go build -o bin/${APP}`
+**/bin/*
+!**/bin/.gitkeep

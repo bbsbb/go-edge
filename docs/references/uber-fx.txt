@@ -1,0 +1,558 @@
+================================================================================
+UBER FX — Quick API Reference
+================================================================================
+Source: go.uber.org/fx (v1.24.0)
+Docs:   https://uber-go.github.io/fx/
+API:    https://pkg.go.dev/go.uber.org/fx
+
+TABLE OF CONTENTS
+  1. Application Bootstrap
+  2. Providing Dependencies (fx.Provide, fx.Supply)
+  3. Invoking Functions (fx.Invoke)
+  4. Modules (fx.Module, fx.Options)
+  5. Lifecycle Hooks (fx.Lifecycle, OnStart, OnStop)
+  6. Parameter Structs (fx.In)
+  7. Result Structs (fx.Out)
+  8. Named Values
+  9. Value Groups
+  10. Annotations (fx.Annotate)
+  11. Interface Binding (fx.As)
+  12. Decorators (fx.Decorate, fx.Replace)
+  13. Private Providers
+  14. Error Handling
+  15. Shutdown Control
+  16. Testing (fxtest)
+  17. Common Patterns
+
+
+1. APPLICATION BOOTSTRAP
+--------------------------------------------------------------------------------
+
+    app := fx.New(
+        module1,
+        module2,
+        fx.Provide(...),
+        fx.Invoke(...),
+    )
+    app.Run()                            // Start, block on signals, stop
+
+    // Manual control:
+    app.Start(ctx)                       // Execute OnStart hooks
+    app.Stop(ctx)                        // Execute OnStop hooks (reverse order)
+    app.Done()                           // Channel of os.Signal
+    app.Wait()                           // Channel of fx.ShutdownSignal (has ExitCode)
+    app.Err()                            // Initialization error, if any
+
+    // Timeouts (defaults: 15s each):
+    fx.StartTimeout(30 * time.Second)
+    fx.StopTimeout(30 * time.Second)
+
+    // Logging:
+    fx.WithLogger(func(log *zap.Logger) fxevent.Logger {
+        return &fxevent.ZapLogger{Logger: log}
+    })
+    fx.NopLogger                         // Suppress all fx output
+
+
+2. PROVIDING DEPENDENCIES (fx.Provide, fx.Supply)
+--------------------------------------------------------------------------------
+
+Constructors are lazy (called only when needed) and cached (singletons).
+
+    fx.Provide(NewUserRepo)              // func NewUserRepo(db *sql.DB) *UserRepo
+
+    fx.Provide(
+        NewDB,
+        NewUserRepo,
+        NewOrderRepo,
+    )
+
+    // Supply pre-built values (no constructor needed):
+    fx.Supply(cfg)                       // Provides *Config (uses concrete type)
+    fx.Supply(                           // Supply with annotation:
+        fx.Annotate(cfg, fx.As(new(Configuration))),
+    )
+
+
+3. INVOKING FUNCTIONS (fx.Invoke)
+--------------------------------------------------------------------------------
+
+Invoked eagerly at startup. Use sparingly — instantiates all transitive deps.
+
+    fx.Invoke(func(mux *http.ServeMux, h Handler) {
+        mux.Handle("/api", h)
+    })
+
+    fx.Invoke(RegisterRoutes)            // func RegisterRoutes(mux *Mux, ...) error
+
+An Invoke that returns error will abort startup.
+
+
+4. MODULES (fx.Module, fx.Options)
+--------------------------------------------------------------------------------
+
+fx.Module creates a named scope. Decorate/Replace are scoped to the module.
+
+    var UserModule = fx.Module("user",
+        fx.Provide(
+            NewUserRepo,
+            NewUserService,
+        ),
+        fx.Invoke(RegisterUserRoutes),
+    )
+
+    // Compose without creating a scope:
+    var Infrastructure = fx.Options(
+        DatabaseModule,
+        CacheModule,
+        LoggingModule,
+    )
+
+    // Use in app:
+    app := fx.New(
+        Infrastructure,
+        UserModule,
+        OrderModule,
+    )
+
+Naming convention: standalone module packages use "fx" suffix (e.g., httpfx,
+loggingfx). Application-internal modules may omit it.
+
+
+5. LIFECYCLE HOOKS (fx.Lifecycle, OnStart, OnStop)
+--------------------------------------------------------------------------------
+
+fx.Lifecycle is automatically available in the container.
+
+    // Inject into constructor:
+    func NewServer(lc fx.Lifecycle, cfg *Config) *Server {
+        srv := &http.Server{Addr: cfg.Addr}
+        lc.Append(fx.Hook{
+            OnStart: func(ctx context.Context) error {
+                ln, err := net.Listen("tcp", srv.Addr)
+                if err != nil {
+                    return err
+                }
+                go srv.Serve(ln)
+                return nil
+            },
+            OnStop: func(ctx context.Context) error {
+                return srv.Shutdown(ctx)
+            },
+        })
+        return srv
+    }
+
+    // Shorthand constructors:
+    lc.Append(fx.StartHook(func() { fmt.Println("started") }))
+    lc.Append(fx.StopHook(func(ctx context.Context) error { return srv.Shutdown(ctx) }))
+    lc.Append(fx.StartStopHook(startFn, stopFn))
+
+    // As annotations (avoids injecting fx.Lifecycle):
+    fx.Provide(
+        fx.Annotate(
+            NewServer,
+            fx.OnStart(func(ctx context.Context, s *Server) error {
+                return s.Listen(ctx)
+            }),
+            fx.OnStop(func(ctx context.Context, s *Server) error {
+                return s.Shutdown(ctx)
+            }),
+        ),
+    )
+
+OnStart hooks run in dependency order. OnStop hooks run in reverse order.
+Only hooks whose OnStart succeeded will have OnStop called.
+
+
+6. PARAMETER STRUCTS (fx.In)
+--------------------------------------------------------------------------------
+
+Embed fx.In to declare a parameter object. Avoids long function signatures
+and enables backward-compatible additions.
+
+    type ServerParams struct {
+        fx.In
+
+        Config  *Config
+        Logger  *zap.Logger
+        DB      *sql.DB
+        Cache   *redis.Client  `optional:"true"`    // nil if not provided
+    }
+
+    func NewServer(p ServerParams) *Server { ... }
+
+Struct tags on fields:
+    `name:"ro"`          — consume a named value
+    `optional:"true"`    — nil/zero if not provided (no error)
+    `group:"watchers"`   — consume a value group as []T
+
+
+7. RESULT STRUCTS (fx.Out)
+--------------------------------------------------------------------------------
+
+Embed fx.Out to produce multiple values from one constructor.
+
+    type GatewayResult struct {
+        fx.Out
+
+        ReadOnly  *sql.DB  `name:"ro"`
+        ReadWrite *sql.DB  `name:"rw"`
+    }
+
+    func NewGateways(cfg *Config) (GatewayResult, error) { ... }
+
+Struct tags on fields:
+    `name:"ro"`                — provide as a named value
+    `group:"handlers"`         — feed into a value group
+    `group:"handlers,flatten"` — feed []T, each element added individually
+
+
+8. NAMED VALUES
+--------------------------------------------------------------------------------
+
+Disambiguate multiple values of the same type.
+
+    // Producing with result struct:
+    type DBResult struct {
+        fx.Out
+        RO *sql.DB `name:"ro"`
+        RW *sql.DB `name:"rw"`
+    }
+
+    // Producing with fx.Annotate:
+    fx.Provide(
+        fx.Annotate(NewReadOnlyDB,  fx.ResultTags(`name:"ro"`)),
+        fx.Annotate(NewReadWriteDB, fx.ResultTags(`name:"rw"`)),
+    )
+
+    // Producing with fx.Annotated (simpler but less powerful):
+    fx.Provide(fx.Annotated{
+        Name:   "ro",
+        Target: NewReadOnlyDB,
+    })
+
+    // Consuming with parameter struct:
+    type RepoParams struct {
+        fx.In
+        DB *sql.DB `name:"rw"`
+    }
+
+    // Consuming with fx.Annotate:
+    fx.Provide(
+        fx.Annotate(NewRepo, fx.ParamTags(`name:"rw"`)),
+    )
+
+
+9. VALUE GROUPS
+--------------------------------------------------------------------------------
+
+Collect multiple values of the same type from different providers.
+Order is NOT guaranteed — do not depend on ordering.
+
+    // --- FEEDING (producers) ---
+
+    // Via result struct:
+    type HandlerResult struct {
+        fx.Out
+        Handler Handler `group:"routes"`
+    }
+    func NewHealthHandler() HandlerResult { ... }
+    func NewUserHandler()   HandlerResult { ... }
+
+    // Via fx.Annotate:
+    fx.Provide(
+        fx.Annotate(NewHealthHandler, fx.As(new(Handler)), fx.ResultTags(`group:"routes"`)),
+        fx.Annotate(NewUserHandler,   fx.As(new(Handler)), fx.ResultTags(`group:"routes"`)),
+    )
+
+    // Via fx.Annotated:
+    fx.Provide(fx.Annotated{Group: "routes", Target: NewHealthHandler})
+
+    // Flatten: feed a slice, each element added individually
+    type Result struct {
+        fx.Out
+        Handlers []Handler `group:"routes,flatten"`
+    }
+
+    // --- CONSUMING (consumers) ---
+
+    // Via parameter struct:
+    type RouterParams struct {
+        fx.In
+        Handlers []Handler `group:"routes"`
+    }
+    func NewRouter(p RouterParams) *Router { ... }
+
+    // Via fx.Annotate:
+    fx.Provide(fx.Annotate(NewRouter, fx.ParamTags(`group:"routes"`)))
+
+    // Soft groups (only include values from constructors already called):
+    type Params struct {
+        fx.In
+        Handlers []Handler `group:"routes,soft"`
+    }
+
+
+10. ANNOTATIONS (fx.Annotate)
+--------------------------------------------------------------------------------
+
+Annotate wraps a function with metadata. Avoids needing fx.In/fx.Out structs
+for simple cases.
+
+    fx.Provide(
+        fx.Annotate(
+            NewGateway,
+            fx.ParamTags(`name:"ro" optional:"true"`, `name:"rw"`),
+            fx.ResultTags(`name:"primary"`),
+        ),
+    )
+
+Available annotations:
+    fx.ParamTags(tags...)    — struct tags for each parameter (positional)
+    fx.ResultTags(tags...)   — struct tags for each return value (positional)
+    fx.As(new(Interface))    — provide return value as an interface type
+    fx.From(new(Type))       — accept parameter as a specific type
+    fx.Self()                — also provide as the original concrete type
+    fx.OnStart(fn)           — register lifecycle start hook
+    fx.OnStop(fn)            — register lifecycle stop hook
+
+Empty string "" skips annotation for that position:
+    fx.ParamTags("", `name:"rw"`)    // first param: default, second: named
+
+
+11. INTERFACE BINDING (fx.As)
+--------------------------------------------------------------------------------
+
+Provide a concrete type as an interface. Critical for decoupling.
+
+    // Provide *bytes.Buffer as io.Writer:
+    fx.Provide(
+        fx.Annotate(bytes.NewBuffer, fx.As(new(io.Writer))),
+    )
+
+    // Provide as multiple interfaces:
+    fx.Provide(
+        fx.Annotate(
+            NewUserRepo,
+            fx.As(new(UserReader)),
+            fx.As(new(UserWriter)),
+        ),
+    )
+
+    // Provide as interface AND keep concrete type:
+    fx.Provide(
+        fx.Annotate(
+            NewUserRepo,
+            fx.As(new(UserReader)),
+            fx.As(fx.Self()),            // also provides *UserRepo
+        ),
+    )
+
+
+12. DECORATORS (fx.Decorate, fx.Replace)
+--------------------------------------------------------------------------------
+
+Modify values already in the container. Scoped to the current module.
+
+    // Decorate: transform a dependency
+    fx.Module("myapp",
+        fx.Decorate(func(log *zap.Logger) *zap.Logger {
+            return log.Named("myapp")
+        }),
+        fx.Provide(NewServer),           // Server gets the decorated logger
+    )
+
+    // Replace: swap a value entirely
+    fx.Module("myapp",
+        fx.Replace(customLogger),
+    )
+
+Decorators can take deps and return errors:
+    fx.Decorate(func(base *Config, env *Env) (*Config, error) { ... })
+
+
+13. PRIVATE PROVIDERS
+--------------------------------------------------------------------------------
+
+Restrict a provided value to the current module.
+
+    fx.Module("internal",
+        fx.Provide(newHelper, fx.Private),    // only visible inside this module
+        fx.Provide(NewService),               // can use helper; Service is exported
+    )
+
+
+14. ERROR HANDLING
+--------------------------------------------------------------------------------
+
+    // Short-circuit startup with a static error:
+    fx.Error(fmt.Errorf("missing config: %s", key))
+
+    // Recover panics in Provide/Invoke/Decorate:
+    fx.RecoverFromPanics()
+
+    // Validate the graph without running anything:
+    err := fx.ValidateApp(opts...)
+
+    // Visualize dependency errors (DOT format):
+    dotStr, _ := fx.VisualizeError(err)
+
+    // Access the DOT graph (always available):
+    fx.Invoke(func(graph fx.DotGraph) {
+        fmt.Println(string(graph))
+    })
+
+
+15. SHUTDOWN CONTROL
+--------------------------------------------------------------------------------
+
+    // Inject shutdowner:
+    func watchSignals(shut fx.Shutdowner) {
+        // ...
+        shut.Shutdown()                           // trigger graceful shutdown
+        shut.Shutdown(fx.ExitCode(1))             // with exit code
+    }
+
+    // Read shutdown signal:
+    sig := <-app.Wait()
+    fmt.Println(sig.Signal, sig.ExitCode)
+
+
+16. TESTING (fxtest)
+--------------------------------------------------------------------------------
+Package: go.uber.org/fx/fxtest
+
+    // Full app test:
+    func TestApp(t *testing.T) {
+        var svc *UserService
+        app := fxtest.New(t,
+            UserModule,
+            DatabaseModule,
+            fx.Populate(&svc),               // extract value for assertions
+        )
+        app.RequireStart()
+        defer app.RequireStop()
+
+        // svc is now populated and started
+        assert.NotNil(t, svc)
+    }
+
+    // Test lifecycle hooks in isolation:
+    func TestServerHooks(t *testing.T) {
+        lc := fxtest.NewLifecycle(t)
+        srv := NewServer(lc, testConfig)
+
+        lc.RequireStart()
+        defer lc.RequireStop()
+        // assert server is running
+    }
+
+    // Redirect fx logs to test output:
+    fxtest.WithTestLogger(t)                 // as an fx.Option
+
+fxtest.App wraps fx.App:
+    .RequireStart() *App                     // Start or fail test
+    .RequireStop()                           // Stop or fail test
+
+fxtest.Lifecycle wraps fx.Lifecycle:
+    .Append(fx.Hook)
+    .Start(ctx) error
+    .Stop(ctx) error
+    .RequireStart() *Lifecycle
+    .RequireStop()
+
+
+17. COMMON PATTERNS
+--------------------------------------------------------------------------------
+
+--- Constructor function ---
+
+    func NewRepo(db *sql.DB, log *zap.Logger) *Repo {
+        return &Repo{db: db, log: log}
+    }
+    // Register: fx.Provide(NewRepo)
+
+--- Interface binding (the most important pattern) ---
+
+    type Repository interface { ... }
+    type postgresRepo struct { ... }
+    func NewPostgresRepo(db *sql.DB) *postgresRepo { ... }
+
+    fx.Provide(
+        fx.Annotate(NewPostgresRepo, fx.As(new(Repository))),
+    )
+
+--- Module as package variable ---
+
+    // package userfx
+    var Module = fx.Module("user",
+        fx.Provide(
+            fx.Annotate(NewPostgresRepo, fx.As(new(Repository))),
+            NewService,
+        ),
+    )
+
+--- Conditional options ---
+
+    func Module(cfg Config) fx.Option {
+        opts := []fx.Option{
+            fx.Provide(NewBase),
+        }
+        if cfg.CacheEnabled {
+            opts = append(opts, fx.Provide(NewCache))
+        }
+        return fx.Options(opts...)
+    }
+
+--- Option function pattern ---
+
+    func Module(opts ...Option) fx.Option {
+        cfg := defaultConfig()
+        for _, o := range opts {
+            o.apply(&cfg)
+        }
+        return fx.Module("mymod",
+            fx.Supply(cfg),
+            fx.Provide(NewService),
+        )
+    }
+
+--- Multiple implementations via named values ---
+
+    fx.Provide(
+        fx.Annotate(NewPostgres, fx.ResultTags(`name:"primary"`)),
+        fx.Annotate(NewSQLite,   fx.ResultTags(`name:"cache"`)),
+    )
+
+--- Plugin / handler registration via value groups ---
+
+    // Each handler module:
+    fx.Provide(fx.Annotate(NewUserHandler,   fx.As(new(Handler)), fx.ResultTags(`group:"handlers"`)))
+    fx.Provide(fx.Annotate(NewHealthHandler, fx.As(new(Handler)), fx.ResultTags(`group:"handlers"`)))
+
+    // Router consumes all:
+    fx.Provide(fx.Annotate(NewRouter, fx.ParamTags(`group:"handlers"`)))
+
+--- Populate for extracting values in tests ---
+
+    var repo Repository
+    var svc  *Service
+    app := fxtest.New(t,
+        MyModule,
+        fx.Populate(&repo, &svc),
+    )
+
+--- Validation without running ---
+
+    if err := fx.ValidateApp(
+        MyModule,
+        fx.Invoke(func(svc *Service) {}),   // assert Service is buildable
+    ); err != nil {
+        t.Fatal(err)
+    }
+
+
+================================================================================
+END OF REFERENCE
+================================================================================
