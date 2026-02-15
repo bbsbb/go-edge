@@ -108,46 +108,7 @@ cmd/  ──→  (wires everything together via FX)
 
 ## Domain-Driven Design
 
-Applications are structured around Domain-Driven Design (DDD) tactical patterns. We adopt the vocabulary and layering because it produces clear boundaries and readable code — not as dogma. Use the patterns where they fit naturally; skip them where they add ceremony without value.
-
-### Vocabulary
-
-| Term | Where it lives | What it means |
-|------|---------------|---------------|
-| **Entity** | `domain/` | Object with identity that persists over time (e.g., `User`, `Organization`). Identified by a UUID, mutable. |
-| **Value Object** | `domain/` | Immutable object defined by its attributes, not identity (e.g., `Email`, `Money`). Compared by value. |
-| **Repository** | Interface in `domain/`, implementation in `infrastructure/persistence/` | Abstracts data access for an aggregate. Domain defines the contract, infrastructure provides the implementation. |
-| **Application Service** | `service/` | Orchestrates use cases by coordinating domain objects and repositories. Contains no business rules — those belong in the domain. A `service.Registry` provides all services to the transport layer via a single injection point. |
-| **Adapter** | `transport/` (inbound), `infrastructure/` (outbound) | Translates between external protocols and the domain. HTTP handlers are inbound adapters; repository implementations are outbound adapters. |
-| **Domain Error** | `domain/errors.go` | Typed errors with a `Code` for classification. Services produce them; transport adapters translate them to protocol-specific responses. |
-| **Domain Event** | `domain/` (if appropriate) | Record of something significant that happened in the domain. Introduce only when the domain genuinely needs event-driven behavior. |
-
-### How the layers map to DDD
-
-```
-domain/            The domain model — entities, value objects, repository interfaces, errors, events
-service/           Application services — use case orchestration, no business logic
-infrastructure/    Outbound adapters — repository implementations, external service clients
-transport/         Inbound adapters — HTTP handlers, CLI commands
-cmd/               Composition root — wires ports to adapters via FX
-```
-
-The dependency rule (outer layers depend on inner, never the reverse) is the Dependency Inversion Principle applied to DDD: `service/` depends on repository *interfaces* defined in `domain/`, not on `infrastructure/` implementations. FX wires the concrete implementations at startup.
-
-### Naming conventions
-
-- Domain types use business language, not technical jargon: `User`, `Organization`, not `UserModel` or `UserEntity`
-- Repository interfaces are named after the aggregate: `UserRepository`, not `UserStore` or `UserDAO`
-- Service methods describe use cases: `CreateUser`, `AuthenticateWithCode`, not `InsertUser` or `ProcessLogin`
-- Handlers are grouped by resource: `handler/user.go`, `handler/organization.go`
-
-### Validation ownership
-
-The transport layer parses and decodes (JSON deserialization, path parameter parsing). The service layer validates business rules (valid category, positive price, order is open). Do not split validation across layers — it creates ambiguity about where the source of truth is.
-
-- **Transport:** `render.Bind()` decodes the request body. `ParseID()` parses path parameters. Malformed input (bad JSON, unparseable UUID) is rejected here.
-- **Service:** All business validation happens here. Required fields, value ranges, enum membership, invariant checks. Services return `CodeValidation` errors for input violations and `CodeInvariant` errors for business rule violations.
-- **DTOs** carry no validation logic. They are pure data shapes with `NoOpBinder`/`NoOpRenderer` for chi/render compatibility.
+Applications use DDD tactical patterns within the hexagonal architecture. See [docs/DESIGN.md — Domain-Driven Design](./docs/DESIGN.md#domain-driven-design) for the full vocabulary, layer mapping, naming conventions, and validation ownership rules.
 
 ### RLS boundary: what sits inside vs outside
 
@@ -225,18 +186,7 @@ Application tables live in the `app` schema. Define tables as needed for your do
 
 ### Row-Level Security (RLS)
 
-See [docs/SECURITY.md](./docs/SECURITY.md) for the full RLS model, auth pattern, and secret management.
-
-RLS enforces tenant isolation at the database level. Each RLS-protected table gets a policy:
-
-```sql
-CREATE POLICY organization_isolation_policy ON app.<table>
-USING (organization_id = current_setting('app.current_organization')::UUID);
-```
-
-The `rlsfx.DB.Tx()` method sets `app.current_organization` via `SET LOCAL` before each transaction. Queries outside this method do not have RLS applied. Non-RLS repositories use `*pgxpool.Pool` directly and participate in ambient transactions via `psqlfx.TxFromContext()`.
-
-**DO NOT** use `*pgxpool.Pool` to access RLS-protected tables. The dependency type declares intent: `*rlsfx.DB` = tenant-isolated, `*pgxpool.Pool` = direct access (admin/cross-tenant). Using `*pgxpool.Pool` on an RLS-protected table bypasses tenant isolation and is a security vulnerability. When adding a new repository, choose the dependency type based on whether the table has an RLS policy.
+See [docs/SECURITY.md](./docs/SECURITY.md) for the full RLS model (policies, `SET LOCAL` flow, request lifecycle, constraints), auth pattern, and secret management. See [RLS boundary](#rls-boundary-what-sits-inside-vs-outside) above for which dependency type to use when adding repositories.
 
 ### Migrations
 
@@ -246,10 +196,7 @@ Managed by Goose in `apps/<name>/internal/migrations/`. Migrations are SQL files
 
 ## Health Probes
 
-See [docs/RELIABILITY.md](./docs/RELIABILITY.md) for timeout chains, graceful shutdown, and error handling details.
-
-- **`/healthz`** (liveness) — always returns 200. No external checks. Kubernetes uses this to decide if the process is alive.
-- **`/readyz`** (readiness) — checks Postgres connectivity. Returns 200 or 503. Kubernetes uses this to decide if the pod should receive traffic.
+See [docs/RELIABILITY.md](./docs/RELIABILITY.md) for health probe contracts, timeout chains, graceful shutdown, and error handling.
 
 ## Growth Paths
 

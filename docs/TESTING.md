@@ -168,16 +168,6 @@ func (s *MySuite) TestValidation() {
 }
 ```
 
-### Mocks via Mockery
-
-Use `mockery` to generate mocks from domain interfaces. Use the expecter pattern:
-
-```go
-s.repo.EXPECT().FindByID(mock.Anything, userID).Return(user, nil).Once()
-```
-
-Mock configuration lives in `.mockery.yaml` per module. Generated mocks go to `tests/mocks/`.
-
 ### Handler Tests via Integration Suite
 
 Handler tests use the integration suite's real router — no mocked services:

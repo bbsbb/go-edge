@@ -79,10 +79,4 @@ Validate with `tools/scripts/validate-sla.sh` when the app and observability sta
 
 ## Error Handling
 
-### Domain Errors
-
-All errors flowing through the system carry a `domain.Code` that classifies the failure. See [ARCHITECTURE.md](../ARCHITECTURE.md) for the code-to-HTTP-status mapping.
-
-### Unknown Errors
-
-Errors without a domain code are treated as HTTP 500. The real error is logged with the request's correlation ID but never exposed to the client. The client sees a generic `"internal error"` message.
+See [ARCHITECTURE.md — Domain Error Model](../ARCHITECTURE.md#domain-error-model) for the error code classification, HTTP status mapping, and error translation flow.
