@@ -38,8 +38,10 @@ func (s *ArchitectureSuite) TestForbiddenImports() {
 				"internal/infrastructure",
 				"internal/transport",
 				"internal/config",
+				"jackc/pgx",
 				"database/sql",
 				"net/http",
+				"go-chi/chi",
 			},
 		},
 		{
@@ -48,8 +50,10 @@ func (s *ArchitectureSuite) TestForbiddenImports() {
 			denied: []string{
 				"internal/infrastructure",
 				"internal/transport",
+				"jackc/pgx",
 				"database/sql",
 				"net/http",
+				"go-chi/chi",
 			},
 		},
 		{
@@ -58,6 +62,8 @@ func (s *ArchitectureSuite) TestForbiddenImports() {
 			denied: []string{
 				"internal/service",
 				"internal/transport",
+				"net/http",
+				"go-chi/chi",
 			},
 		},
 		{
@@ -65,6 +71,8 @@ func (s *ArchitectureSuite) TestForbiddenImports() {
 			pattern: "internal/transport",
 			denied: []string{
 				"internal/infrastructure",
+				"jackc/pgx",
+				"database/sql",
 			},
 		},
 	}

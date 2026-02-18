@@ -1,9 +1,15 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-18 -->
 # Tech Debt
 
 Conscious technical debt with context on origin, deferral reason, and conditions for revisiting.
 
 ## Code & Design
+
+### Secret store wiring in sweetshop
+- **Origin:** Guard fixes review (2026-02-18)
+- **Reason:** `NewAppConfiguration` in `apps/sweetshop/internal/config/configuration.go` does not pass `WithSecrets()` to `LoadConfiguration`. `production.yaml` contains `secret://` values for psql host, credentials, and otel endpoint. Without a secret service, these values remain as literal strings. Core now supports YAML-based secret resolution, but the app must wire a `secretstore.Service` for it to take effect.
+- **What's needed:** Pass `WithSecrets(secretstore.NewEnvService(""))` (or a production adapter) conditionally based on environment in `NewAppConfiguration`.
+- **Revisit:** Before first production deployment
 
 ### Pagination helpers
 - **Origin:** Template baseline
