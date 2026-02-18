@@ -139,9 +139,13 @@ while IFS= read -r doc; do
     done < <(grep -oE '\]\([^)]+' "$doc" | sed 's/^](//' || true)
 done < <(find "$REPO_ROOT/docs" "$REPO_ROOT/CLAUDE.md" "$REPO_ROOT/ARCHITECTURE.md" -name '*.md' -type f 2>/dev/null)
 
-# --- Check 4: Doc freshness (reviewed date must be >= last commit date) ---
+# --- Check 4: Doc freshness (content hash must match) ---
 
-echo "==> Checking doc freshness..."
+echo "==> Checking doc content hashes..."
+
+compute_content_hash() {
+    grep -v 'last-reviewed:' "$1" | sha256sum | cut -c1-8
+}
 
 while IFS= read -r doc; do
     [ -z "$doc" ] && continue
@@ -150,16 +154,24 @@ while IFS= read -r doc; do
     # Skip generated docs
     [[ "$rel_path" == docs/generated/* ]] && continue
 
-    reviewed_date=$(grep -oE 'last-reviewed: [0-9]{4}-[0-9]{2}-[0-9]{2}' "$doc" | head -1 | sed 's/last-reviewed: //' || true)
+    tag_line=$(grep -E '<!-- last-reviewed:.*-->' "$doc" | head -1 || true)
 
-    if [ -z "$reviewed_date" ]; then
-        error "$rel_path is missing a <!-- last-reviewed: YYYY-MM-DD --> tag."
+    if [ -z "$tag_line" ]; then
+        error "$rel_path is missing a <!-- last-reviewed: YYYY-MM-DD content-hash: HASH --> tag."
         continue
     fi
 
-    last_commit_date=$(git -C "$REPO_ROOT" log -1 --format='%as' -- "$rel_path" 2>/dev/null || true)
-    if [ -n "$last_commit_date" ] && [ "$reviewed_date" \< "$last_commit_date" ]; then
-        error "$rel_path was modified ($last_commit_date) after its last-reviewed date ($reviewed_date). Update the last-reviewed tag."
+    stored_hash=$(echo "$tag_line" | grep -oE 'content-hash: [0-9a-f]+' | sed 's/content-hash: //' || true)
+
+    if [ -z "$stored_hash" ]; then
+        error "$rel_path has a last-reviewed tag but is missing the content-hash field. Run: make update-doc-hashes"
+        continue
+    fi
+
+    actual_hash=$(compute_content_hash "$doc")
+
+    if [ "$stored_hash" != "$actual_hash" ]; then
+        error "$rel_path content hash mismatch (stored: $stored_hash, actual: $actual_hash). Review the changes and run: make update-doc-hashes"
     fi
 done < <(find "$REPO_ROOT/docs" "$REPO_ROOT/ARCHITECTURE.md" "$REPO_ROOT/CLAUDE.md" -name '*.md' -type f 2>/dev/null)
 

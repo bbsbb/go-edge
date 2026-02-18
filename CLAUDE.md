@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: fc9cad50 -->
 # Claude Code Guidelines
 
 ## Core Beliefs
@@ -139,6 +139,7 @@ Task cycle:
 **Definition of done:** A task is only complete when:
 1. `make ci` and `make guard` pass from root
 2. The doc impact matrix has been scanned and any affected docs updated
+3. If any docs were modified, run `make update-doc-hashes` to recompute content hashes
 
 ### Exec Plans
 

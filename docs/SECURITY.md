@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: 8c207d5f -->
 # Security
 
 Security model and practices.

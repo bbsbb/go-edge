@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: 5efb157f -->
 # Reliability
 
 Reliability contracts and operational behavior.

@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: a7200056 -->
 # Design
 
 System-wide technology choices and tradeoffs. For structural patterns and dependency rules, see [ARCHITECTURE.md](../ARCHITECTURE.md). For API quick-references, see the [references catalogue](./references/index.md). For design decision records, see the [design-docs catalogue](./design-docs/index.md).

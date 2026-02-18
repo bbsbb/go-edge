@@ -18,5 +18,9 @@ validate-quality:
 validate-security:
 	@$(foreach d,$(MODULES),(cd $(d) && echo "Executing [govulncheck] on $(d):" && govulncheck ./...) &&) true
 
+.PHONY: update-doc-hashes
+update-doc-hashes:
+	./tools/scripts/update-doc-hashes.sh
+
 .PHONY: guard
 guard: validate-docs validate-architecture validate-naming validate-quality validate-security

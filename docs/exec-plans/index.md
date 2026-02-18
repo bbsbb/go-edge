@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: e6b16cf7 -->
 # Execution Plans
 
 Permanent, versioned records of engineering initiatives and deferred work. Everything here is committed to git and discoverable by all agents and humans.

@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: 9b41218f -->
 # Plans
 
 Manually maintained roadmap. Updated when initiatives start or complete. See also [PRODUCT_SENSE.md](./PRODUCT_SENSE.md) for product context and the [product-specs catalogue](./product-specs/index.md) for shipped feature specifications.

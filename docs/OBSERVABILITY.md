@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: 50108a70 -->
 # Observability
 
 Local observability stack for querying logs, metrics, and traces produced by the application.

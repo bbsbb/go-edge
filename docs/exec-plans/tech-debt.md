@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-18 -->
+<!-- last-reviewed: 2026-02-18 content-hash: 89ae0952 -->
 # Tech Debt
 
 Conscious technical debt with context on origin, deferral reason, and conditions for revisiting.

@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: 9c72a5ef -->
 # Sweetshop — First Application
 
 ## Goal
