@@ -79,6 +79,53 @@ func (s *ConfigurationSuite) TestLoadConfiguration_WithSecrets() {
 	s.Assert().Equal("super-secret-password", cfg.Database.Password)
 }
 
+func (s *ConfigurationSuite) TestLoadConfiguration_WithSecretsFromYAML() {
+	ctx := context.Background()
+
+	mockService := mocks.NewMockSecretsService(s.T())
+	mockService.EXPECT().GetSecretValue("db-password").Return("yaml-resolved-secret", nil).Once()
+
+	cfg, err := LoadConfiguration[*TestConfig](ctx, Testing,
+		WithPath("./testdata/secrets"),
+		WithSecrets(mockService),
+	)
+	s.Require().NoError(err)
+
+	s.Assert().Equal("yaml-resolved-secret", cfg.Database.Password)
+}
+
+func (s *ConfigurationSuite) TestLoadConfiguration_WithSecretsFromYAMLOverriddenByEnv() {
+	ctx := context.Background()
+
+	s.T().Setenv("DATABASE_PASSWORD", "env-override-value")
+
+	mockService := mocks.NewMockSecretsService(s.T())
+	mockService.EXPECT().GetSecretValue("db-password").Return("yaml-resolved-secret", nil).Once()
+
+	cfg, err := LoadConfiguration[*TestConfig](ctx, Testing,
+		WithPath("./testdata/secrets"),
+		WithSecrets(mockService),
+	)
+	s.Require().NoError(err)
+
+	s.Assert().Equal("env-override-value", cfg.Database.Password)
+}
+
+func (s *ConfigurationSuite) TestLoadConfiguration_WithSecretsFromYAMLError() {
+	ctx := context.Background()
+
+	mockService := mocks.NewMockSecretsService(s.T())
+	mockService.EXPECT().GetSecretValue("db-password").Return("", errors.New("secret not found")).Once()
+
+	_, err := LoadConfiguration[*TestConfig](ctx, Testing,
+		WithPath("./testdata/secrets"),
+		WithSecrets(mockService),
+	)
+	s.Require().Error(err)
+	s.Assert().ErrorIs(err, errSecretResolution)
+	s.Assert().Contains(err.Error(), "secret not found")
+}
+
 func (s *ConfigurationSuite) TestLoadConfiguration_WithSecretsError() {
 	ctx := context.Background()
 

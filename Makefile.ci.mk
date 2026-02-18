@@ -1,6 +1,3 @@
-APPS = $(wildcard apps/*)
-MODULES = ./core $(APPS)
-
 .PHONY: ci-test-all
 ci-test-all:
 	@$(foreach d,$(MODULES),(cd $(d) && make test) &&) true

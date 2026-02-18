@@ -35,63 +35,66 @@ linters:
             - pkg: "github.com/mitchellh/mapstructure"
               desc: "use github.com/go-viper/mapstructure/v2 instead of the archived mitchellh/mapstructure"
 
-        # domain/ must not import: gorm, database/sql, net/http, chi,
+        # domain/ must not import: pgx, database/sql, net/http, chi,
         # infrastructure/, transport/, service/, config/
         domain-layer:
           files:
             - "**/internal/domain/**"
+            - "!**_test.go"
           list-mode: lax
           deny:
-            - pkg: "gorm.io"
-              desc: "domain must not depend on gorm"
+            - pkg: "github.com/jackc/pgx"
+              desc: "domain must not depend on pgx"
             - pkg: "database/sql"
               desc: "domain must not depend on database/sql"
             - pkg: "net/http"
               desc: "domain must not depend on net/http"
             - pkg: "github.com/go-chi/chi"
               desc: "domain must not depend on chi"
-            - pkg: "github.com/bbsbb/go-edge/<app>/internal/infrastructure"
+            - pkg: "github.com/bbsbb/go-edge/sweetshop/internal/infrastructure"
               desc: "domain must not depend on infrastructure layer"
-            - pkg: "github.com/bbsbb/go-edge/<app>/internal/transport"
+            - pkg: "github.com/bbsbb/go-edge/sweetshop/internal/transport"
               desc: "domain must not depend on transport layer"
-            - pkg: "github.com/bbsbb/go-edge/<app>/internal/service"
+            - pkg: "github.com/bbsbb/go-edge/sweetshop/internal/service"
               desc: "domain must not depend on service layer"
-            - pkg: "github.com/bbsbb/go-edge/<app>/internal/config"
+            - pkg: "github.com/bbsbb/go-edge/sweetshop/internal/config"
               desc: "domain must not depend on config"
 
-        # service/ must not import: gorm, database/sql, net/http, chi,
+        # service/ must not import: pgx, database/sql, net/http, chi,
         # infrastructure/, transport/
         service-layer:
           files:
             - "**/internal/service/**"
+            - "!**_test.go"
           list-mode: lax
           deny:
-            - pkg: "gorm.io"
-              desc: "service must not depend on gorm"
+            - pkg: "github.com/jackc/pgx"
+              desc: "service must not depend on pgx"
             - pkg: "database/sql"
               desc: "service must not depend on database/sql"
             - pkg: "net/http"
               desc: "service must not depend on net/http"
             - pkg: "github.com/go-chi/chi"
               desc: "service must not depend on chi"
-            - pkg: "github.com/bbsbb/go-edge/<app>/internal/infrastructure"
+            - pkg: "github.com/bbsbb/go-edge/sweetshop/internal/infrastructure"
               desc: "service must not depend on infrastructure layer"
-            - pkg: "github.com/bbsbb/go-edge/<app>/internal/transport"
+            - pkg: "github.com/bbsbb/go-edge/sweetshop/internal/transport"
               desc: "service must not depend on transport layer"
 
         # infrastructure/ must not import: net/http, chi, transport/, service/
         infrastructure-layer:
           files:
             - "**/internal/infrastructure/**"
+            - "!**_test.go"
           list-mode: lax
           deny:
             - pkg: "net/http"
               desc: "infrastructure must not depend on net/http"
             - pkg: "github.com/go-chi/chi"
               desc: "infrastructure must not depend on chi"
-            - pkg: "github.com/bbsbb/go-edge/<app>/internal/transport"
+            - pkg: "github.com/bbsbb/go-edge/sweetshop/internal/transport"
               desc: "infrastructure must not depend on transport layer"
-            - pkg: "github.com/bbsbb/go-edge/<app>/internal/service"
+            - pkg: "github.com/bbsbb/go-edge/sweetshop/internal/service"
               desc: "infrastructure must not depend on service layer"
 
         # Application code must use rlsfx, not psqlfx or pgxpool directly.
@@ -113,17 +116,18 @@ linters:
             - pkg: "github.com/jackc/pgx/v5/pgxpool"
               desc: "application code must use *rlsfx.DB, not *pgxpool.Pool directly — only config/, migrations/, and organization repos may import pgxpool"
 
-        # transport/ must not import: gorm, database/sql, infrastructure/
+        # transport/ must not import: pgx, database/sql, infrastructure/
         transport-layer:
           files:
             - "**/internal/transport/**"
+            - "!**_test.go"
           list-mode: lax
           deny:
-            - pkg: "gorm.io"
-              desc: "transport must not depend on gorm"
+            - pkg: "github.com/jackc/pgx"
+              desc: "transport must not depend on pgx"
             - pkg: "database/sql"
               desc: "transport must not depend on database/sql"
-            - pkg: "github.com/bbsbb/go-edge/<app>/internal/infrastructure"
+            - pkg: "github.com/bbsbb/go-edge/sweetshop/internal/infrastructure"
               desc: "transport must not depend on infrastructure layer"
     forbidigo:
       forbid:

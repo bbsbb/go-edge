@@ -110,6 +110,49 @@ func instantiateGeneric[T any]() T {
 	return reflect.Zero(typeOfGeneric).Interface().(T)
 }
 
+func resolveStructSecrets(v reflect.Value, service secretstore.Service) error {
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return nil
+		}
+		v = v.Elem()
+	}
+
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+
+	for i := range v.NumField() {
+		field := v.Field(i)
+		if !field.CanSet() {
+			continue
+		}
+
+		switch field.Kind() {
+		case reflect.String:
+			if secretName, found := strings.CutPrefix(field.String(), "secret://"); found {
+				resolved, err := service.GetSecretValue(secretName)
+				if err != nil {
+					return fmt.Errorf("secret %q for field %s: %w", secretName, v.Type().Field(i).Name, err)
+				}
+				field.SetString(resolved)
+			}
+		case reflect.Struct:
+			if err := resolveStructSecrets(field, service); err != nil {
+				return err
+			}
+		case reflect.Ptr:
+			if !field.IsNil() && field.Elem().Kind() == reflect.Struct {
+				if err := resolveStructSecrets(field.Elem(), service); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func LoadConfiguration[T any](ctx context.Context, environment Environment, opt ...Option) (T, error) {
 	cfgInstance := instantiateGeneric[T]()
 	lookupFns := []envconfig.Lookuper{}
@@ -128,6 +171,12 @@ func LoadConfiguration[T any](ctx context.Context, environment Environment, opt 
 
 		if err = yaml.Unmarshal(bs, cfgInstance); err != nil {
 			return cfgInstance, fmt.Errorf("failed to parse config file %s: %w", filePath, err)
+		}
+	}
+
+	if opts.secretsService != nil {
+		if err := resolveStructSecrets(reflect.ValueOf(cfgInstance), opts.secretsService); err != nil {
+			return cfgInstance, fmt.Errorf("%w: %w", errSecretResolution, err)
 		}
 	}
 
