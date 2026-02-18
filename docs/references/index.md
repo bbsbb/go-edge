@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: 22a9e897 -->
 # References
 
 Condensed dependency references for quick lookup.

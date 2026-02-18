@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: 9dba6fa1 -->
 # Architecture
 
 This document is the authoritative reference for the codebase structure. Read this before making changes.

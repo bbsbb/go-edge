@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: 1a92019c -->
 # Core Beliefs
 
 Agent-first operating principles that govern how this codebase is built and maintained. These are not aspirational — they describe the rules we actually follow and enforce.

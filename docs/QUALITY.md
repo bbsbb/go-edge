@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: 770b4f78 -->
 # Quality
 
 Quality grades per domain and architectural layer. For the current database schema, see [`generated/db-schema.md`](./generated/db-schema.md) (`make docs-schema`).

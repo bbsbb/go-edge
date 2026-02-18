@@ -1,4 +1,4 @@
-<!-- last-reviewed: 2026-02-15 -->
+<!-- last-reviewed: 2026-02-15 content-hash: e5d37460 -->
 # Testing
 
 Testing strategy, patterns, and review checklist.
