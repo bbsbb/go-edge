@@ -157,7 +157,7 @@ while IFS= read -r doc; do
         continue
     fi
 
-    last_commit_date=$(git -C "$REPO_ROOT" log -1 --format='%cs' -- "$rel_path" 2>/dev/null || true)
+    last_commit_date=$(git -C "$REPO_ROOT" log -1 --format='%as' -- "$rel_path" 2>/dev/null || true)
     if [ -n "$last_commit_date" ] && [ "$reviewed_date" \< "$last_commit_date" ]; then
         error "$rel_path was modified ($last_commit_date) after its last-reviewed date ($reviewed_date). Update the last-reviewed tag."
     fi
